@@ -11,55 +11,48 @@ class AgentState(TypedDict):
     job_name: str
     recommendation: Optional[str]
 
+# Fetch key from Jenkins environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-llm = ChatGroq(model="llama3-70b-8192", groq_api_key=GROQ_API_KEY)
+
+# FIX: Switched from deprecated model to active 2026 production endpoint
+llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=GROQ_API_KEY, temperature=0.1)
 
 def clean_and_optimize_logs(raw_log_path: str) -> str:
-    """
-    Scans the entire log chronologically, filtering out verbose clutter 
-    (like continuous download percentages) while retaining stage status 
-    and detailed failure markers to protect the LLM context limits.
-    """
-    optimized_lines = []
-    with open(raw_log_path, "r", errors="ignore") as f:
+    """Reads full log file from start to finish safely using UTF-8."""
+    with open(raw_log_path, "r", encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()
-
+    
+    # Trim continuous download noise but keep 100% of pipeline structural commands and errors
+    filtered_lines = []
     for line in lines:
-        # Retain structural framework blocks, errors, and environment definitions
-        if any(marker in line for marker in ["[Pipeline]", "stage", "ERROR", "failed", "exit", "tag", "Mismatch"]):
-            optimized_lines.append(line)
-        # Skip repetitive dependency installation and image pulling percentages
-        elif any(clutter in line for clutter in ["% completed", "Extracting", "Downloading", "Fetch"]):
+        if any(clutter in line for clutter in ["% completed", "Extracting", "Downloading", "Progress"]):
             continue
-        else:
-            # Keep standard output lines up to a reasonable buffer length
-            if len(optimized_lines) < 250:
-                optimized_lines.append(line)
-            else:
-                # Keep sliding window on the actual end errors
-                optimized_lines.pop(0)
-                optimized_lines.append(line)
-
-    return "".join(optimized_lines)
+        filtered_lines.append(line)
+        
+    return "".join(filtered_lines)
 
 def analyze_logs_node(state: AgentState):
     logs = state["error_logs"]
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", (
-            "You are an elite Site Reliability Engineer (SRE). You are reviewing an optimized, "
-            "end-to-end trace of a failed Jenkins pipeline.\n\n"
-            "Track the pipeline flow chronologically to diagnose exactly where the configuration or data went wrong. "
-            "Identify structural faults, mismatched environment values, or typographical errors in your analysis.\n\n"
-            "Provide your findings in crisp Slack markdown:\n"
-            "💥 *Failed Stage:* <Name of stage>\n"
-            "🔍 *Root Cause Analysis:* <Technical description of the mismatch or failure>\n"
+            "You are an automated DevOps SRE Engine scanning a complete end-to-end Jenkins pipeline console log.\n"
+            "Your main objective is to extract the EXACT technical mismatch or typo from the commands executed.\n\n"
+            
+            "Look for details like:\n"
+            "- Discrepancies between variables defined vs variables used.\n"
+            "- Typos in Docker tags or image references during push or build commands.\n"
+            "- Configuration parameter collisions.\n\n"
+            
+            "Format your response cleanly using bold Slack markdown layout:\n"
+            "💥 *Failed Stage:* <Name of stage that broke>\n"
+            "🔍 *Extracted Exact Error:* <Quote the exact error statement or mismatched data line directly from the text log>\n"
             "🛠️ *Actionable Fix:* \n"
             "```\n"
-            "<Provide the exact command, code modification, or environment key fix>\n"
+            "<Provide the precise string modification or setup fix>\n"
             "```"
         )),
-        ("user", "Job: {job_name} | Build: #{build_number}\n\nLogs:\n{logs}")
+        ("user", "Analyze logs chronologically for Job: {job_name} | Build: #{build_number}\n\nLogs:\n{logs}")
     ])
     
     chain = prompt | llm
@@ -73,10 +66,11 @@ def analyze_logs_node(state: AgentState):
     return state
 
 def write_output_node(state: AgentState):
-    with open("ai_recommendation.txt", "w") as f:
+    with open("ai_recommendation.txt", "w", encoding="utf-8") as f:
         f.write(state["recommendation"])
     return state
 
+# Graph Setup
 workflow = StateGraph(AgentState)
 workflow.add_node("analyze_logs", analyze_logs_node)
 workflow.add_node("write_output", write_output_node)
@@ -92,7 +86,6 @@ if __name__ == "__main__":
         log_file_path = sys.argv[3]
         
         if os.path.exists(log_file_path):
-            # Read the whole log but optimize it safely before passing it to Groq
             processed_logs = clean_and_optimize_logs(log_file_path)
         else:
             processed_logs = "Log file missing or could not be found."
