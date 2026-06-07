@@ -10,22 +10,23 @@ class AgentState(TypedDict):
     build_number: str
     job_name: str
     recommendation: Optional[str]
+    workspace_dir: str  # Dynamically tracks absolute workspace context
 
-# Fetch key from Jenkins environment
+# Fetch key safely from Jenkins environment wrapper
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# FIX: Switched from deprecated model to active 2026 production endpoint
+# Active production endpoint running optimized low temperature for precise extraction
 llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=GROQ_API_KEY, temperature=0.1)
 
 def clean_and_optimize_logs(raw_log_path: str) -> str:
-    """Reads full log file from start to finish safely using UTF-8."""
+    """Reads the full log file from start to finish safely using UTF-8."""
     with open(raw_log_path, "r", encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()
     
-    # Trim continuous download noise but keep 100% of pipeline structural commands and errors
+    # Trim continuous tool chatter but keep 100% of structural data & errors
     filtered_lines = []
     for line in lines:
-        if any(clutter in line for clutter in ["% completed", "Extracting", "Downloading", "Progress"]):
+        if any(clutter in line for clutter in ["% completed", "Extracting", "Downloading", "Progress", "Refining"]):
             continue
         filtered_lines.append(line)
         
@@ -37,7 +38,7 @@ def analyze_logs_node(state: AgentState):
     prompt = ChatPromptTemplate.from_messages([
         ("system", (
             "You are an automated DevOps SRE Engine scanning a complete end-to-end Jenkins pipeline console log.\n"
-            "Your main objective is to extract the EXACT technical mismatch or typo from the commands executed.\n\n"
+            "Your main objective is to extract the EXACT technical mismatch, typo, or misconfiguration from the commands executed.\n\n"
             
             "Look for details like:\n"
             "- Discrepancies between variables defined vs variables used.\n"
@@ -66,7 +67,9 @@ def analyze_logs_node(state: AgentState):
     return state
 
 def write_output_node(state: AgentState):
-    with open("ai_recommendation.txt", "w", encoding="utf-8") as f:
+    # FIX: Explicitly forcing absolute paths relative to the execution log directory
+    output_path = os.path.join(state["workspace_dir"], "ai_recommendation.txt")
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(state["recommendation"])
     return state
 
@@ -83,16 +86,18 @@ if __name__ == "__main__":
     if len(sys.argv) > 3:
         job_name = sys.argv[1]
         build_number = sys.argv[2]
-        log_file_path = sys.argv[3]
+        log_file_path = os.path.abspath(sys.argv[3]) # Convert to absolute path
+        workspace_directory = os.path.dirname(log_file_path) # Extrapolate target workspace directory
         
         if os.path.exists(log_file_path):
             processed_logs = clean_and_optimize_logs(log_file_path)
         else:
-            processed_logs = "Log file missing or could not be found."
+            processed_logs = f"Log file missing or could not be found at path: {log_file_path}"
 
         initial_state = {
             "job_name": job_name,
             "build_number": build_number,
-            "error_logs": processed_logs
+            "error_logs": processed_logs,
+            "workspace_dir": workspace_directory
         }
         app.invoke(initial_state)
