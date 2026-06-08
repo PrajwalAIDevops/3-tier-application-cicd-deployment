@@ -1,50 +1,113 @@
 import os
+import re
 import sys
 import traceback
 from langchain_groq import ChatGroq
 
 OUTPUT_FILE = "/tmp/ai_recommendation.txt"
 
+
 def save_output(content):
-    try:
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            f.write(content)
-    except Exception as e:
-        print(f"Failed to write output: {e}")
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def extract_errors(logs):
+    patterns = [
+        r".*ERROR.*",
+        r".*Exception.*",
+        r".*FAILED.*",
+        r".*failed.*",
+        r".*permission denied.*",
+        r".*command not found.*",
+        r".*denied.*",
+        r".*ImagePullBackOff.*",
+        r".*CrashLoopBackOff.*"
+    ]
+
+    results = []
+
+    for line in logs.splitlines():
+        for p in patterns:
+            if re.search(p, line, re.IGNORECASE):
+                results.append(line)
+
+    return "\n".join(results[-30:])
+
 
 try:
 
-    job_name = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
-    build_number = sys.argv[2] if len(sys.argv) > 2 else "0"
-    log_file = sys.argv[3] if len(sys.argv) > 3 else "full_pipeline_log.txt"
+    job_name = sys.argv[1]
+    build_number = sys.argv[2]
+    log_file = sys.argv[3]
 
     if not os.path.exists(log_file):
-        save_output("❌ Log file not found.")
+        save_output("❌ Jenkins log file not found")
         sys.exit(0)
 
     with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
         logs = f.read()
 
-    logs = logs[-12000:]
+    logs = logs[-15000:]
 
     known_errors = {
         "permission denied":
-            "🛠 Fix: Check file ownership and permissions.",
+            """
+Root Cause:
+Permission issue.
+
+Fix:
+Check file ownership.
+
+Example:
+sudo chown -R jenkins:jenkins <path>
+chmod 644 <file>
+""",
+
         "command not found":
-            "🛠 Fix: Required binary is missing from PATH.",
-        "quality gate failed":
-            "🛠 Fix: Resolve SonarQube Quality Gate issues.",
-        "ImagePullBackOff":
-            "🛠 Fix: Verify image tag and registry credentials.",
+            """
+Root Cause:
+Required binary missing.
+
+Fix:
+Install package or update PATH.
+""",
+
         "docker: permission denied":
-            "🛠 Fix: Add jenkins user to docker group."
+            """
+Root Cause:
+Jenkins cannot access Docker socket.
+
+Fix:
+sudo usermod -aG docker jenkins
+sudo systemctl restart jenkins
+""",
+
+        "quality gate failed":
+            """
+Root Cause:
+SonarQube Quality Gate failed.
+
+Fix:
+Resolve Sonar issues before deployment.
+""",
+
+        "ImagePullBackOff":
+            """
+Root Cause:
+Kubernetes cannot pull image.
+
+Fix:
+Verify image tag and registry credentials.
+"""
     }
 
     for key, fix in known_errors.items():
+
         if key.lower() in logs.lower():
 
-            result = f"""
-🚨 CI/CD Failure Analysis
+            save_output(f"""
+🚨 AI DevOps Analysis
 
 Job: {job_name}
 Build: #{build_number}
@@ -53,15 +116,14 @@ Detected Error:
 {key}
 
 {fix}
-"""
+""")
 
-            save_output(result)
             sys.exit(0)
 
     groq_key = os.getenv("GROQ_API_KEY")
 
     if not groq_key:
-        save_output("❌ GROQ_API_KEY missing.")
+        save_output("❌ GROQ_API_KEY missing")
         sys.exit(0)
 
     llm = ChatGroq(
@@ -70,20 +132,30 @@ Detected Error:
         temperature=0
     )
 
+    error_section = extract_errors(logs)
+
     prompt = f"""
 You are a Senior DevOps Engineer.
 
-Analyze this Jenkins failure.
+Analyze Jenkins failure.
 
-Return:
+Rules:
+1. Identify failed stage.
+2. Extract exact error.
+3. Explain root cause.
+4. Give fix.
+5. Do not guess.
+6. If uncertain say:
+   'Insufficient log evidence'
 
-Failed Stage:
-Root Cause:
-Fix:
+Job:
+{job_name}
+
+Build:
+{build_number}
 
 Logs:
-
-{logs}
+{error_section}
 """
 
     response = llm.invoke(prompt)
@@ -91,8 +163,4 @@ Logs:
     save_output(response.content)
 
 except Exception:
-
-    save_output(
-        "❌ AI Agent Error\n\n" +
-        traceback.format_exc()
-    )
+    save_output(traceback.format_exc())
