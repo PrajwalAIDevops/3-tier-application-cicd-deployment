@@ -2,11 +2,11 @@
 
 | Build Failure Notification | Build Success Notification |
 |---------------------------|----------------------------|
-| ![Failure](images/build-failure.png) | ![Success](images/build-success.png) |
+| ![](images/build-failure-notification.pngbuild-failure-notification.png) | ![](images/build-success-notification.png) |
 
 | Jenkins Pipeline Stage View |
 |----------------------------|
-| ![Stage View](images/jenkins-stage-view.png) |
+| ![](images/enkins-stage-view.png) |
 
 ---
 ## 📌 Project Overview
