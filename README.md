@@ -2,11 +2,11 @@
 
 | Jenkins Pipeline | SonarQube Dashboard |
 |-----------------|--------------------|
-| ![](images/Screenshot_2026-06-08_123346.png) | ![](images/Screenshot_2026-06-08_123630.png) |
+| ![](images/Screenshot 2026-06-08 123346.png) | ![](images/Screenshot 2026-06-08 123630.png) |
 
 | Trivy Security Scan |
 |---------------------|
-| ![](images/Screenshot_2026-06-08_124626.png) |
+| ![](images/Screenshot 2026-06-08 124626.png) |
 
 ---
 
