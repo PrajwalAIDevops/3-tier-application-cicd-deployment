@@ -1,15 +1,14 @@
 # 🚀 Yelp Camp Web Application - DevSecOps CI/CD Project
 
-| Jenkins Pipeline | SonarQube Dashboard |
-|-----------------|--------------------|
-| ![](images/Screenshot 2026-06-08 123346.png) | ![](images/Screenshot 2026-06-08 123630.png) |
+| Build Failure Notification | Build Success Notification |
+|---------------------------|----------------------------|
+| ![](images/build-failure.png) | ![](images/build-success.png) |
 
-| Trivy Security Scan |
-|---------------------|
-| ![](images/Screenshot 2026-06-08 124626.png) |
+| Jenkins Pipeline Stage View |
+|----------------------------|
+| ![](images/jenkins-stage-view.png) |
 
 ---
-
 ## 📌 Project Overview
 
 This web application allows users to add, view, access, and rate campgrounds by location. It is based on "The Web Developer Bootcamp" by Colt Steele, with additional enhancements, bug fixes, and a complete DevSecOps CI/CD implementation.
